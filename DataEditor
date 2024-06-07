@@ -1,0 +1,120 @@
+import streamlit as st
+import pandas as pd
+from io import StringIO
+import tempfile
+
+# Creating a fucntion for handling appropriate format file reading
+def read_file(file):
+    if file.name.endswith('.csv'):
+        return pd.read_csv(file), '.csv'
+    elif file.name.endswith('.json'):
+        return pd.read_json(file), '.json'
+    elif file.name.endswith('.xlsx') or file.name.endswith('.xls'):
+        return pd.read_excel(file), '.xlsx'
+    else:
+        st.error("Unsupported file type")
+        return None, None
+
+# Get the file
+st.title("📊 Data Uploader and Editor")
+file = st.file_uploader("Drop your data here 📂", type=['csv', 'json', 'xlsx', 'xls'])
+
+# Display the data
+if file:
+    df, file_type = read_file(file)
+    if df is not None:
+        st.write("Your initial file✏️")
+        # Ability to modify the visual data and save it
+        edited_df = st.data_editor(df, key="initial_editor")
+
+        # Data Cleaning
+        st.sidebar.header("🧹 Data Cleaning")
+        if st.sidebar.button("Drop Missing Values 🗑️"):
+            edited_df = edited_df.dropna()
+            st.write("Missing values dropped ✅")
+
+        fill_value = st.sidebar.text_input("Fill Missing Values With 🔧:")
+        if st.sidebar.button("Fill Missing Values ✨"):
+            edited_df = edited_df.fillna(fill_value)
+            st.write(f"Missing values filled with {fill_value} ✅")
+
+        # Data Transformation
+        st.sidebar.header("🔄 Data Transformation")
+        columns_to_transform = st.sidebar.multiselect("Select Columns to Scale/Normalize 📈", edited_df.columns)
+        if st.sidebar.button("Scale Selected Columns ⚖️"):
+            for col in columns_to_transform:
+                edited_df[col] = (edited_df[col] - edited_df[col].mean()) / edited_df[col].std()
+            st.write("Selected columns scaled ✅")
+
+        # Filtering and Sorting
+        st.sidebar.header("🔍 Filtering and Sorting")
+        filter_column = st.sidebar.selectbox("Select Column to Filter 📋", edited_df.columns)
+        filter_value = st.sidebar.text_input("Filter Value 🔎")
+        if st.sidebar.button("Apply Filter ✅"):
+            edited_df = edited_df[edited_df[filter_column] == filter_value]
+            st.write(f"Data filtered by {filter_value} in column {filter_column} ✅")
+
+        sort_column = st.sidebar.selectbox("Select Column to Sort ⬆️⬇️", edited_df.columns)
+        if st.sidebar.button("Sort Data ↕️"):
+            edited_df = edited_df.sort_values(by=sort_column)
+            st.write(f"Data sorted by column {sort_column} ✅")
+
+        # Grouping and Aggregation
+        st.sidebar.header("🔢 Grouping and Aggregation")
+        group_by_column = st.sidebar.selectbox("Select Column to Group By 📊", edited_df.columns)
+        aggregation_function = st.sidebar.selectbox("Select Aggregation Function 📈", ["sum", "mean", "count"])
+        if st.sidebar.button("Apply Aggregation ✅"):
+            if aggregation_function == "sum":
+                edited_df = edited_df.groupby(group_by_column).sum().reset_index()
+            elif aggregation_function == "mean":
+                edited_df = edited_df.groupby(group_by_column).mean().reset_index()
+            elif aggregation_function == "count":
+                edited_df = edited_df.groupby(group_by_column).count().reset_index()
+            st.write(f"Data grouped by {group_by_column} and aggregated with {aggregation_function} ✅")
+
+        # Finding Missing Values
+        st.sidebar.header("🔍 Finding Missing Values")
+        if st.sidebar.button("Find Missing Values 🔍"):
+            missing_mask = edited_df.isna()
+            missing_counts = missing_mask.sum()
+            missing_counts_rows = missing_mask.sum(axis=1)
+            st.write("Missing values found in each column:")
+            st.write(missing_counts)
+            st.write("Missing values found in each row:")
+            st.write(missing_counts_rows)
+            st.write("DataFrame with missing values highlighted:")
+            st.dataframe(edited_df.style.applymap(lambda x: 'background-color: yellow' if pd.isna(x) else ''))
+
+        st.write("Further edit your data with changes applied ✏️")
+        final_df = st.data_editor(edited_df, key="final_editor")
+
+        col1, col2 = st.columns(2)
+        # Function Info
+        with col1:
+            show_info = st.checkbox("Show Info ℹ️")
+            if show_info:
+                buffer = StringIO()
+                final_df.info(buf=buffer)
+                st.text(buffer.getvalue())
+
+        # Function Describe
+        with col2:
+            show_description = st.checkbox("Show Description 📊")
+            if show_description:
+                st.write(final_df.describe())
+
+        # Convert the edited DataFrame to the appropriate format
+        if file_type == '.csv':
+            download_data = final_df.to_csv(index=False).encode('utf-8')
+        elif file_type == '.json':
+            download_data = final_df.to_json().encode('utf-8')
+        elif file_type == '.xlsx':
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                final_df.to_excel(tmp.name, index=False)
+                tmp.seek(0)
+                download_data = tmp.read()
+
+        st.download_button("Download the edited file here 💾",
+                           file_name=f"edited{file_type}", data=download_data)
+
+# NOTE: Emojis and missing values functions were made by chat gpt, I also asked it to fix and optimize my code
